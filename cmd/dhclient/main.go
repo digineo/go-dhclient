@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -13,12 +14,18 @@ import (
 func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 
+	if len(os.Args) != 2 {
+		fmt.Println("syntax:", os.Args[0], "IFNAME")
+		os.Exit(1)
+	}
+
 	hostname, _ := os.Hostname()
 	ifname := os.Args[1]
 
 	iface, err := net.InterfaceByName(ifname)
 	if err != nil {
-		panic(err)
+		fmt.Printf("unable to find interface %s: %s\n", ifname, err)
+		os.Exit(1)
 	}
 
 	client := dhclient.Client{
