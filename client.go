@@ -17,6 +17,12 @@ import (
 
 const responseTimeout = time.Second * 5
 
+const (
+	requesting = iota
+	renewing
+	shutdown
+)
+
 // Callback is a function called on certain events
 type Callback func(*Lease)
 
@@ -28,11 +34,12 @@ type Client struct {
 	OnBound  Callback // On renew or rebound
 	OnExpire Callback // On expiration of a lease
 
-	conn     *raw.Conn
-	xid      uint32 // Transaction ID
-	wg       sync.WaitGroup
-	shutdown bool
-	notify   chan struct{}
+	conn   *raw.Conn      // Waw socket
+	xid    uint32         // Transaction ID
+	wg     sync.WaitGroup // For graceful shutdown
+	state  int            // Current operation mode
+	mtx    sync.Mutex     // Mutex for the state
+	notify chan struct{}
 }
 
 // Option is a DHCP option field
@@ -51,7 +58,7 @@ type Lease struct {
 	Router       []net.IP
 	DNS          []net.IP
 	TimeServer   []net.IP
-	SIPServer    []net.IP
+	DomainName   string
 	MTU          uint16
 	Renew        time.Time
 	Rebind       time.Time
@@ -62,7 +69,9 @@ type Lease struct {
 var paramsRequestList = []byte{
 	1,  // Subnet Mask
 	3,  // Router
+	4,  // Time Server
 	6,  // Domain Name Server
+	15, // Domain Name
 	26, // Interface MTU
 	42, // Network Time Protocol Servers
 }
@@ -80,8 +89,10 @@ func (client *Client) Start() {
 // Stop stops the client
 func (client *Client) Stop() {
 	log.Println("shutting down dhclient for", client.Iface.Name)
-	client.shutdown = true
+
+	client.setState(shutdown)
 	close(client.notify)
+
 	if conn := client.conn; conn != nil {
 		conn.Close()
 	}
@@ -90,6 +101,7 @@ func (client *Client) Stop() {
 
 // Renew triggers the renewal of the current lease
 func (client *Client) Renew() {
+	client.setState(renewing)
 	select {
 	case client.notify <- struct{}{}:
 	default:
@@ -98,12 +110,13 @@ func (client *Client) Renew() {
 
 // Rebind forgets the current lease and triggers acquirement of a new one
 func (client *Client) Rebind() {
+	client.setState(requesting)
 	client.Lease = nil
 	client.Renew()
 }
 
 func (client *Client) run() {
-	for !client.shutdown {
+	for client.state != shutdown {
 		client.runOnce()
 	}
 	client.wg.Done()
@@ -111,7 +124,7 @@ func (client *Client) run() {
 
 func (client *Client) runOnce() {
 	var err error
-	if client.Lease == nil {
+	if client.Lease == nil || client.state == requesting {
 		// request new lease
 		err = client.withConnection(client.discoverAndRequest)
 		if cb := client.OnBound; err == nil && cb != nil {
@@ -135,12 +148,26 @@ func (client *Client) runOnce() {
 	select {
 	case <-client.notify:
 		return
-	case <-time.After(time.Until(client.Lease.Rebind)):
-		// lease expired, time for rebind
+	case <-time.After(time.Until(client.Lease.Expire)):
+		// remove lease and request a new one
 		client.unbound()
+		client.setState(requesting)
+	case <-time.After(time.Until(client.Lease.Rebind)):
+		// keep lease and request a new one
+		client.setState(requesting)
 	case <-time.After(time.Until(client.Lease.Renew)):
-		// time for renewal
+		// renew the lease
+		client.setState(renewing)
 	}
+}
+
+// setState sets the state if there is no shutdown running
+func (client *Client) setState(newState int) {
+	client.mtx.Lock()
+	if client.state != shutdown {
+		client.state = newState
+	}
+	client.mtx.Unlock()
 }
 
 // unbound removes the lease
@@ -216,9 +243,9 @@ func (client *Client) request() error {
 	switch msgType {
 	case layers.DHCPMsgTypeAck:
 		if lease.Renew.IsZero() {
-			err = errors.New("renew is zero")
+			err = errors.New("renewal time value is zero")
 		} else if lease.Rebind.IsZero() {
-			err = errors.New("rebind is zero")
+			err = errors.New("rebinding time value is zero")
 		} else {
 			client.Lease = lease
 		}
