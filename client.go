@@ -242,10 +242,12 @@ func (client *Client) request() error {
 
 	switch msgType {
 	case layers.DHCPMsgTypeAck:
-		if lease.Renew.IsZero() {
-			err = errors.New("renewal time value is zero")
+		if lease.Expire.IsZero() {
+			err = errors.New("expire value is zero")
+		} else if lease.Renew.IsZero() {
+			err = errors.New("renewal value is zero")
 		} else if lease.Rebind.IsZero() {
-			err = errors.New("rebinding time value is zero")
+			err = errors.New("rebinding value is zero")
 		} else {
 			client.Lease = lease
 		}
