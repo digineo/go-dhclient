@@ -332,16 +332,13 @@ func (client *Client) waitForResponse(msgTypes ...layers.DHCPMsgType) (layers.DH
 			return 0, nil, err
 		}
 
-		packet := gopacket.NewPacket(recvBuf, layers.LayerTypeEthernet, gopacket.Default)
-		dhcpLayer := packet.Layer(layers.LayerTypeDHCPv4)
-		if dhcpLayer == nil {
-			// received packet is not DHCP
+		packet := parsePacket(recvBuf)
+		if packet == nil {
 			continue
 		}
-		layer := dhcpLayer.(*layers.DHCPv4)
 
-		if layer.Xid == client.xid && layer.Operation == layers.DHCPOpReply {
-			msgType, res := parseResponse(layer)
+		if packet.Xid == client.xid && packet.Operation == layers.DHCPOpReply {
+			msgType, res := newLease(packet)
 
 			// do we have the expected message type?
 			for _, t := range msgTypes {

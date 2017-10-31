@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
 
@@ -17,8 +18,20 @@ func parseIPs(data []byte) []net.IP {
 	return result
 }
 
-// parseResponse transforms a DHCP offer into a Lease
-func parseResponse(packet *layers.DHCPv4) (msgType layers.DHCPMsgType, lease Lease) {
+// parsePacket decodes a DHCPv4 packet
+func parsePacket(data []byte) *layers.DHCPv4 {
+	packet := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
+	dhcpLayer := packet.Layer(layers.LayerTypeDHCPv4)
+
+	if dhcpLayer == nil {
+		// received packet is not DHCP
+		return nil
+	}
+	return dhcpLayer.(*layers.DHCPv4)
+}
+
+// newLease transforms a DHCP offer into a Lease
+func newLease(packet *layers.DHCPv4) (msgType layers.DHCPMsgType, lease Lease) {
 	now := time.Now()
 	lease.FixedAddress = packet.YourClientIP
 
