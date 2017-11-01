@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"net"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/google/gopacket"
@@ -179,7 +178,7 @@ func (client *Client) unbound() {
 }
 
 func (client *Client) withConnection(f func() error) error {
-	conn, err := raw.ListenPacket(client.Iface, syscall.ETH_P_IP)
+	conn, err := raw.ListenPacket(client.Iface, uint16(layers.EthernetTypeIPv4))
 	if err != nil {
 		return err
 	}
