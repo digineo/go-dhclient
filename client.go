@@ -119,11 +119,8 @@ func (client *Client) runOnce() {
 		// request new lease
 		err = client.withConnection(client.discoverAndRequest)
 		if err == nil {
+			// try to renew the lease in the future
 			client.rebind = false
-
-			if cb := client.OnBound; cb != nil {
-				cb(client.Lease)
-			}
 		}
 	} else {
 		// renew existing lease
@@ -235,6 +232,11 @@ func (client *Client) request(lease *Lease) error {
 			err = errors.New("rebind value is zero")
 		} else {
 			client.Lease = lease
+
+			// call the handler
+			if cb := client.OnBound; cb != nil {
+				cb(lease)
+			}
 		}
 	case layers.DHCPMsgTypeNak:
 		err = errors.New("received NAK")
