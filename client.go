@@ -127,7 +127,7 @@ func (client *Client) runOnce() {
 		}
 	} else {
 		// renew existing lease
-		err = client.withConnection(client.request)
+		err = client.withConnection(client.renew)
 	}
 
 	if err != nil {
@@ -179,38 +179,41 @@ func (client *Client) withConnection(f func() error) error {
 }
 
 func (client *Client) discoverAndRequest() error {
-	err := client.discover()
+	lease, err := client.discover()
 	if err != nil {
 		return err
 	}
-	return client.request()
+	return client.request(lease)
 }
 
-func (client *Client) discover() error {
+func (client *Client) renew() error {
+	return client.request(client.Lease)
+}
+
+func (client *Client) discover() (*Lease, error) {
 	err := client.sendPacket(layers.DHCPMsgTypeDiscover, []Option{
 		{layers.DHCPOptParamsRequest, paramsRequestList},
 		{layers.DHCPOptHostname, []byte(client.Hostname)},
 	})
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	_, lease, err := client.waitForResponse(layers.DHCPMsgTypeOffer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	client.Lease = lease
-	return nil
+	return lease, nil
 }
 
-func (client *Client) request() error {
+func (client *Client) request(lease *Lease) error {
 	err := client.sendPacket(layers.DHCPMsgTypeRequest, []Option{
 		{layers.DHCPOptParamsRequest, paramsRequestList},
 		{layers.DHCPOptHostname, []byte(client.Hostname)},
-		{layers.DHCPOptRequestIP, []byte(client.Lease.FixedAddress)},
-		{layers.DHCPOptServerID, []byte(client.Lease.ServerID)},
+		{layers.DHCPOptRequestIP, []byte(lease.FixedAddress)},
+		{layers.DHCPOptServerID, []byte(lease.ServerID)},
 	})
 
 	if err != nil {
