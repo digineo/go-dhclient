@@ -16,12 +16,6 @@ import (
 
 const responseTimeout = time.Second * 5
 
-const (
-	requesting = iota
-	renewing
-	shutdown
-)
-
 // Callback is a function called on certain events
 type Callback func(*Lease)
 
@@ -33,12 +27,12 @@ type Client struct {
 	OnBound  Callback // On renew or rebound
 	OnExpire Callback // On expiration of a lease
 
-	conn   *raw.Conn      // Waw socket
-	xid    uint32         // Transaction ID
-	wg     sync.WaitGroup // For graceful shutdown
-	state  int            // Current operation mode
-	mtx    sync.Mutex     // Mutex for the state
-	notify chan struct{}
+	conn     *raw.Conn // Raw socket
+	xid      uint32    // Transaction ID
+	rebind   bool
+	shutdown bool
+	notify   chan struct{}  // Is closed on shutdown
+	wg       sync.WaitGroup // For graceful shutdown
 }
 
 // Option is a DHCP option field
@@ -87,9 +81,8 @@ func (client *Client) Start() {
 
 // Stop stops the client
 func (client *Client) Stop() {
-	log.Println("shutting down dhclient for", client.Iface.Name)
-
-	client.setState(shutdown)
+	log.Printf("[%s] shutting down dhclient", client.Iface.Name)
+	client.shutdown = true
 	close(client.notify)
 
 	if conn := client.conn; conn != nil {
@@ -100,7 +93,6 @@ func (client *Client) Stop() {
 
 // Renew triggers the renewal of the current lease
 func (client *Client) Renew() {
-	client.setState(renewing)
 	select {
 	case client.notify <- struct{}{}:
 	default:
@@ -109,13 +101,13 @@ func (client *Client) Renew() {
 
 // Rebind forgets the current lease and triggers acquirement of a new one
 func (client *Client) Rebind() {
-	client.setState(requesting)
+	client.rebind = true
 	client.Lease = nil
 	client.Renew()
 }
 
 func (client *Client) run() {
-	for client.state != shutdown {
+	for !client.shutdown {
 		client.runOnce()
 	}
 	client.wg.Done()
@@ -123,11 +115,15 @@ func (client *Client) run() {
 
 func (client *Client) runOnce() {
 	var err error
-	if client.Lease == nil || client.state == requesting {
+	if client.Lease == nil || client.rebind {
 		// request new lease
 		err = client.withConnection(client.discoverAndRequest)
-		if cb := client.OnBound; err == nil && cb != nil {
-			cb(client.Lease)
+		if err == nil {
+			client.rebind = false
+
+			if cb := client.OnBound; cb != nil {
+				cb(client.Lease)
+			}
 		}
 	} else {
 		// renew existing lease
@@ -135,7 +131,7 @@ func (client *Client) runOnce() {
 	}
 
 	if err != nil {
-		log.Println(err)
+		log.Printf("[%s] error: %s", client.Iface.Name, err)
 		// delay for a second
 		select {
 		case <-client.notify:
@@ -150,23 +146,12 @@ func (client *Client) runOnce() {
 	case <-time.After(time.Until(client.Lease.Expire)):
 		// remove lease and request a new one
 		client.unbound()
-		client.setState(requesting)
 	case <-time.After(time.Until(client.Lease.Rebind)):
 		// keep lease and request a new one
-		client.setState(requesting)
+		client.rebind = true
 	case <-time.After(time.Until(client.Lease.Renew)):
 		// renew the lease
-		client.setState(renewing)
 	}
-}
-
-// setState sets the state if there is no shutdown running
-func (client *Client) setState(newState int) {
-	client.mtx.Lock()
-	if client.state != shutdown {
-		client.state = newState
-	}
-	client.mtx.Unlock()
 }
 
 // unbound removes the lease
@@ -202,8 +187,7 @@ func (client *Client) discoverAndRequest() error {
 }
 
 func (client *Client) discover() error {
-	err := client.sendPacket([]Option{
-		{layers.DHCPOptMessageType, []byte{byte(layers.DHCPMsgTypeDiscover)}},
+	err := client.sendPacket(layers.DHCPMsgTypeDiscover, []Option{
 		{layers.DHCPOptParamsRequest, paramsRequestList},
 		{layers.DHCPOptHostname, []byte(client.Hostname)},
 	})
@@ -222,8 +206,7 @@ func (client *Client) discover() error {
 }
 
 func (client *Client) request() error {
-	err := client.sendPacket([]Option{
-		{layers.DHCPOptMessageType, []byte{byte(layers.DHCPMsgTypeRequest)}},
+	err := client.sendPacket(layers.DHCPMsgTypeRequest, []Option{
 		{layers.DHCPOptParamsRequest, paramsRequestList},
 		{layers.DHCPOptHostname, []byte(client.Hostname)},
 		{layers.DHCPOptRequestIP, []byte(client.Lease.FixedAddress)},
@@ -246,7 +229,7 @@ func (client *Client) request() error {
 		} else if lease.Renew.IsZero() {
 			err = errors.New("renewal value is zero")
 		} else if lease.Rebind.IsZero() {
-			err = errors.New("rebinding value is zero")
+			err = errors.New("rebind value is zero")
 		} else {
 			client.Lease = lease
 		}
@@ -261,18 +244,25 @@ func (client *Client) request() error {
 }
 
 // sendPacket creates and sends a DHCP packet
-func (client *Client) sendPacket(options []Option) error {
-	return client.sendMulticast(client.newPacket(options))
+func (client *Client) sendPacket(msgType layers.DHCPMsgType, options []Option) error {
+	log.Printf("[%s] sending %s", client.Iface.Name, msgType)
+	return client.sendMulticast(client.newPacket(msgType, options))
 }
 
 // newPacket creates a DHCP packet
-func (client *Client) newPacket(options []Option) *layers.DHCPv4 {
+func (client *Client) newPacket(msgType layers.DHCPMsgType, options []Option) *layers.DHCPv4 {
 	packet := layers.DHCPv4{
 		Operation:    layers.DHCPOpRequest,
 		HardwareType: layers.LinkTypeEthernet,
 		ClientHWAddr: client.Iface.HardwareAddr,
 		Xid:          client.xid, // Transaction ID
 	}
+
+	packet.Options = append(packet.Options, layers.DHCPOption{
+		Type:   layers.DHCPOptMessageType,
+		Data:   []byte{byte(msgType)},
+		Length: 1,
+	})
 
 	// append DHCP options
 	for _, option := range options {
@@ -324,9 +314,11 @@ func (client *Client) sendMulticast(dhcp *layers.DHCPv4) error {
 // waitForResponse waits for a DHCP packet with matching transaction ID and the given message type
 func (client *Client) waitForResponse(msgTypes ...layers.DHCPMsgType) (layers.DHCPMsgType, *Lease, error) {
 	client.conn.SetReadDeadline(time.Now().Add(responseTimeout))
+
 	recvBuf := make([]byte, 1500)
 	for {
 		_, _, err := client.conn.ReadFrom(recvBuf)
+
 		if err != nil {
 			return 0, nil, err
 		}
@@ -342,6 +334,7 @@ func (client *Client) waitForResponse(msgTypes ...layers.DHCPMsgType) (layers.DH
 			// do we have the expected message type?
 			for _, t := range msgTypes {
 				if t == msgType {
+					log.Printf("[%s] received %s", client.Iface.Name, msgType)
 					return msgType, &res, nil
 				}
 			}
