@@ -160,7 +160,7 @@ func (client *Client) unbound() {
 }
 
 func (client *Client) withConnection(f func() error) error {
-	conn, err := raw.ListenPacket(client.Iface, uint16(layers.EthernetTypeIPv4))
+	conn, err := raw.ListenPacket(client.Iface, uint16(layers.EthernetTypeIPv4), nil)
 	if err != nil {
 		return err
 	}
