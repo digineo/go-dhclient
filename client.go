@@ -53,9 +53,11 @@ type Lease struct {
 	TimeServer   []net.IP
 	DomainName   string
 	MTU          uint16
-	Renew        time.Time
-	Rebind       time.Time
-	Expire       time.Time
+
+	Bound  time.Time
+	Renew  time.Time
+	Rebind time.Time
+	Expire time.Time
 }
 
 // paramsRequestList is a list of params to be requested from the server
@@ -226,22 +228,27 @@ func (client *Client) request(lease *Lease) error {
 	case layers.DHCPMsgTypeAck:
 		if lease.Expire.IsZero() {
 			err = errors.New("expire value is zero")
-		} else {
+			break
+		}
+		if lease.Renew.IsZero() || lease.Rebind.IsZero() {
 			// support DHCP servers that do not send option 58 and 59
 			// this is using the Microsoft suggested defaults
-                        if lease.Renew.IsZero() {
-                                lease.Renew = time.Now().Add(time.Duration(lease.Expire.Sub(time.Now()).Seconds() * 0.5) * time.Second)
-                        }
-                        if lease.Rebind.IsZero() {
-                                lease.Rebind = time.Now().Add(time.Duration(lease.Expire.Sub(time.Now()).Seconds() * 0.875) * time.Second)
-                        }
-			
-			client.Lease = lease
 
-			// call the handler
-			if cb := client.OnBound; cb != nil {
-				cb(lease)
+			remaining := lease.Expire.Sub(lease.Bound)
+
+			if lease.Renew.IsZero() {
+				lease.Renew = lease.Bound.Add(remaining / 2)
 			}
+			if lease.Rebind.IsZero() {
+				lease.Rebind = lease.Bound.Add(remaining / 1000 * 875)
+			}
+		}
+
+		client.Lease = lease
+
+		// call the handler
+		if cb := client.OnBound; cb != nil {
+			cb(lease)
 		}
 	case layers.DHCPMsgTypeNak:
 		err = errors.New("received NAK")

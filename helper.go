@@ -32,7 +32,7 @@ func parsePacket(data []byte) *layers.DHCPv4 {
 
 // newLease transforms a DHCP offer into a Lease
 func newLease(packet *layers.DHCPv4) (msgType layers.DHCPMsgType, lease Lease) {
-	now := time.Now()
+	lease.Bound = time.Now()
 	lease.FixedAddress = packet.YourClientIP
 
 	for _, option := range packet.Options {
@@ -61,15 +61,15 @@ func newLease(packet *layers.DHCPv4) (msgType layers.DHCPMsgType, lease Lease) {
 			}
 		case layers.DHCPOptLeaseTime:
 			if option.Length == 4 {
-				lease.Expire = now.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
+				lease.Expire = lease.Bound.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
 			}
 		case layers.DHCPOptT1:
 			if option.Length == 4 {
-				lease.Renew = now.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
+				lease.Renew = lease.Bound.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
 			}
 		case layers.DHCPOptT2:
 			if option.Length == 4 {
-				lease.Rebind = now.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
+				lease.Rebind = lease.Bound.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
 			}
 		}
 	}

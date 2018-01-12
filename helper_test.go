@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/google/gopacket/layers"
 
@@ -41,4 +42,10 @@ func TestParseResponse(t *testing.T) {
 	assert.Equal(net.IP{192, 168, 8, 1}, lease.DNS[0])
 	assert.Equal(net.IPMask{255, 255, 252, 0}, lease.Netmask)
 	assert.EqualValues(1406, lease.MTU)
+
+	// check timestamps
+	assert.False(lease.Bound.IsZero())
+	assert.Equal(1800, int(lease.Renew.Sub(lease.Bound)/time.Second))
+	assert.Equal(3150, int(lease.Rebind.Sub(lease.Bound)/time.Second))
+	assert.Equal(3600, int(lease.Expire.Sub(lease.Bound)/time.Second))
 }
