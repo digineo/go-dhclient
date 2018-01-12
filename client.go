@@ -226,11 +226,16 @@ func (client *Client) request(lease *Lease) error {
 	case layers.DHCPMsgTypeAck:
 		if lease.Expire.IsZero() {
 			err = errors.New("expire value is zero")
-		} else if lease.Renew.IsZero() {
-			err = errors.New("renewal value is zero")
-		} else if lease.Rebind.IsZero() {
-			err = errors.New("rebind value is zero")
 		} else {
+			// support DHCP servers that do not send option 58 and 59
+			// this is using the Microsoft suggested defaults
+                        if lease.Renew.IsZero() {
+                                lease.Renew = time.Now().Add(time.Duration(lease.Expire.Sub(time.Now()).Seconds() * 0.5) * time.Second)
+                        }
+                        if lease.Rebind.IsZero() {
+                                lease.Rebind = time.Now().Add(time.Duration(lease.Expire.Sub(time.Now()).Seconds() * 0.875) * time.Second)
+                        }
+			
 			client.Lease = lease
 
 			// call the handler
