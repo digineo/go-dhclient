@@ -230,18 +230,13 @@ func (client *Client) request(lease *Lease) error {
 			err = errors.New("expire value is zero")
 			break
 		}
-		if lease.Renew.IsZero() || lease.Rebind.IsZero() {
-			// support DHCP servers that do not send option 58 and 59
-			// this is using the Microsoft suggested defaults
-
-			remaining := lease.Expire.Sub(lease.Bound)
-
-			if lease.Renew.IsZero() {
-				lease.Renew = lease.Bound.Add(remaining / 2)
-			}
-			if lease.Rebind.IsZero() {
-				lease.Rebind = lease.Bound.Add(remaining / 1000 * 875)
-			}
+		// support DHCP servers that do not send option 58 and 59
+		// this is using the Microsoft suggested defaults
+		if lease.Renew.IsZero() {
+			lease.Renew = lease.Bound.Add(lease.Expire.Sub(lease.Bound) / 2)
+		}
+		if lease.Rebind.IsZero() {
+			lease.Rebind = lease.Bound.Add(lease.Expire.Sub(lease.Bound) / 1000 * 875)
 		}
 
 		client.Lease = lease
