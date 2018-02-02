@@ -87,9 +87,6 @@ func (client *Client) Stop() {
 	client.shutdown = true
 	close(client.notify)
 
-	if conn := client.conn; conn != nil {
-		conn.Close()
-	}
 	client.wg.Wait()
 }
 
