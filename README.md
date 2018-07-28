@@ -2,6 +2,7 @@ go-dhclient
 ===========
 
 [![CircleCI](https://circleci.com/gh/digineo/go-dhclient/tree/master.svg?style=shield)](https://circleci.com/gh/digineo/go-dhclient/tree/master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/digineo/go-dhclient)](https://goreportcard.com/report/github.com/digineo/go-dhclient)
 
 `go-dhclient` is a DHCPv4 client library written in Go.
 It uses raw sockets and binds them to a specific interface.
