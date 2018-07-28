@@ -19,7 +19,7 @@ var options = make(optionMap)
 
 func init() {
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "syntax: %s [flags] IFNAME\n", os.Args[0])
+		fmt.Printf("syntax: %s [flags] IFNAME\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Var(&options, "option", "custom DHCP option (code,value)")
