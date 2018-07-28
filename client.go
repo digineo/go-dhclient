@@ -21,11 +21,12 @@ type Callback func(*Lease)
 
 // Client is a DHCP client instance
 type Client struct {
-	Hostname string
-	Iface    *net.Interface
-	Lease    *Lease   // The current lease
-	OnBound  Callback // On renew or rebound
-	OnExpire Callback // On expiration of a lease
+	Hostname    string
+	Iface       *net.Interface
+	Lease       *Lease   // The current lease
+	OnBound     Callback // On renew or rebound
+	OnExpire    Callback // On expiration of a lease
+	DHCPOptions []Option // List of options to send on discovery and requests
 
 	conn     *raw.Conn // Raw socket
 	xid      uint32    // Transaction ID
@@ -60,8 +61,8 @@ type Lease struct {
 	Expire time.Time
 }
 
-// paramsRequestList is a list of params to be requested from the server
-var paramsRequestList = []byte{
+// DefaultParamsRequestList is a list of params to be requested from the server
+var DefaultParamsRequestList = []byte{
 	1,  // Subnet Mask
 	3,  // Router
 	4,  // Time Server
@@ -73,6 +74,13 @@ var paramsRequestList = []byte{
 
 // Start starts the client
 func (client *Client) Start() {
+	if len(client.DHCPOptions) == 0 {
+		client.DHCPOptions = []Option{
+			{layers.DHCPOptHostname, []byte(client.Hostname)},
+			{layers.DHCPOptParamsRequest, DefaultParamsRequestList},
+		}
+	}
+
 	if client.notify != nil {
 		log.Panicf("client for %s already started", client.Iface.Name)
 	}
@@ -187,10 +195,7 @@ func (client *Client) renew() error {
 }
 
 func (client *Client) discover() (*Lease, error) {
-	err := client.sendPacket(layers.DHCPMsgTypeDiscover, []Option{
-		{layers.DHCPOptParamsRequest, paramsRequestList},
-		{layers.DHCPOptHostname, []byte(client.Hostname)},
-	})
+	err := client.sendPacket(layers.DHCPMsgTypeDiscover, client.DHCPOptions)
 
 	if err != nil {
 		return nil, err
@@ -205,12 +210,10 @@ func (client *Client) discover() (*Lease, error) {
 }
 
 func (client *Client) request(lease *Lease) error {
-	err := client.sendPacket(layers.DHCPMsgTypeRequest, []Option{
-		{layers.DHCPOptParamsRequest, paramsRequestList},
-		{layers.DHCPOptHostname, []byte(client.Hostname)},
-		{layers.DHCPOptRequestIP, []byte(lease.FixedAddress)},
-		{layers.DHCPOptServerID, []byte(lease.ServerID)},
-	})
+	err := client.sendPacket(layers.DHCPMsgTypeRequest, append(client.DHCPOptions,
+		Option{layers.DHCPOptRequestIP, []byte(lease.FixedAddress)},
+		Option{layers.DHCPOptServerID, []byte(lease.ServerID)},
+	))
 
 	if err != nil {
 		return err
