@@ -2,14 +2,12 @@ package main
 
 import (
 	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -17,30 +15,7 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
-type mapVar map[uint8]string
-
-func (v *mapVar) Set(value string) error {
-	i := strings.Index(value, ",")
-	if i < 0 {
-		return errors.New("invalid \"code,value\" pair")
-	}
-
-	code, err := strconv.Atoi(value[:i])
-	if err != nil {
-		return errors.New(fmt.Sprintf("option code \"%s\" is invalid", value[:i]))
-	}
-
-	value = value[i+1:]
-	(*v)[uint8(code)] = value
-
-	return nil
-}
-
-func (v *mapVar) String() string {
-	return ""
-}
-
-var options = make(mapVar)
+var options = make(optionMap)
 
 func init() {
 	flag.Usage = func() {
@@ -59,6 +34,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	log.Println(options)
+
 	hostname, _ := os.Hostname()
 	ifname := flag.Arg(0)
 
@@ -69,8 +46,8 @@ func main() {
 	}
 
 	dhcpOptions := []dhclient.Option{
-		{layers.DHCPOptHostname, []byte(hostname)},
-		{layers.DHCPOptParamsRequest, dhclient.DefaultParamsRequestList},
+		{Type: layers.DHCPOptHostname, Data: []byte(hostname)},
+		{Type: layers.DHCPOptParamsRequest, Data: dhclient.DefaultParamsRequestList},
 	}
 
 	for k, v := range options {
@@ -87,7 +64,7 @@ func main() {
 		}
 
 		dhcpOptions = append(dhcpOptions,
-			dhclient.Option{layers.DHCPOpt(k), data},
+			dhclient.Option{Type: layers.DHCPOpt(k), Data: data},
 		)
 	}
 
