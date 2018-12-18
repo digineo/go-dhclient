@@ -36,12 +36,6 @@ type Client struct {
 	wg       sync.WaitGroup // For graceful shutdown
 }
 
-// Option is a DHCP option field
-type Option struct {
-	Type layers.DHCPOpt
-	Data []byte
-}
-
 // Lease is an assignment by the DHCP server
 type Lease struct {
 	ServerID     net.IP
@@ -62,23 +56,46 @@ type Lease struct {
 }
 
 // DefaultParamsRequestList is a list of params to be requested from the server
-var DefaultParamsRequestList = []byte{
-	1,  // Subnet Mask
-	3,  // Router
-	4,  // Time Server
-	6,  // Domain Name Server
-	15, // Domain Name
-	26, // Interface MTU
-	42, // Network Time Protocol Servers
+var DefaultParamsRequestList = []layers.DHCPOpt{
+	layers.DHCPOptSubnetMask,   // Subnet Mask
+	layers.DHCPOptRouter,       // Router
+	layers.DHCPOptTimeServer,   // Time Server
+	layers.DHCPOptDNS,          // Domain Name Server
+	layers.DHCPOptDomainName,   // Domain Name
+	layers.DHCPOptInterfaceMTU, // Interface MTU
+	layers.DHCPOptNTPServers,   // Network Time Protocol Servers
+}
+
+// AddOption adds an DHCP option
+func (client *Client) AddOption(optType layers.DHCPOpt, data []byte) {
+	client.DHCPOptions = append(client.DHCPOptions, Option{optType, data})
+}
+
+// AddParamRequest adds an parameter to parameter request list, if not included yet.
+func (client *Client) AddParamRequest(dhcpOpt layers.DHCPOpt) {
+
+	// search for existing parameter request list
+	for i := range client.DHCPOptions {
+		if client.DHCPOptions[i].Type == layers.DHCPOptParamsRequest {
+			// extend existing list
+			client.DHCPOptions[i].AddByte(byte(dhcpOpt))
+			return
+		}
+	}
+
+	// option not added yet
+	client.AddOption(layers.DHCPOptParamsRequest, []byte{byte(dhcpOpt)})
 }
 
 // Start starts the client
 func (client *Client) Start() {
-	if len(client.DHCPOptions) == 0 {
-		client.DHCPOptions = []Option{
-			{layers.DHCPOptHostname, []byte(client.Hostname)},
-			{layers.DHCPOptParamsRequest, DefaultParamsRequestList},
+
+	// Add default DHCP options if none added yet.
+	if client.DHCPOptions == nil {
+		for _, param := range DefaultParamsRequestList {
+			client.AddParamRequest(param)
 		}
+		client.AddOption(layers.DHCPOptHostname, []byte(client.Hostname))
 	}
 
 	if client.notify != nil {

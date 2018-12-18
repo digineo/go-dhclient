@@ -1,28 +1,30 @@
 package main
 
 import (
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/digineo/go-dhclient"
 	"github.com/google/gopacket/layers"
 )
 
-var options = make(optionMap)
+var (
+	options       = optionList{}
+	requestParams = byteList{}
+)
 
 func init() {
 	flag.Usage = func() {
 		fmt.Printf("syntax: %s [flags] IFNAME\n", os.Args[0])
 		flag.PrintDefaults()
 	}
-	flag.Var(&options, "option", "custom DHCP option (code,value)")
+	flag.Var(&options, "option", "custom DHCP option for the request (code,value)")
+	flag.Var(&requestParams, "request", "Additional value for the DHCP Request List Option 55 (code)")
 }
 
 func main() {
@@ -34,47 +36,40 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Println(options)
-
-	hostname, _ := os.Hostname()
 	ifname := flag.Arg(0)
-
 	iface, err := net.InterfaceByName(ifname)
 	if err != nil {
 		fmt.Printf("unable to find interface %s: %s\n", ifname, err)
 		os.Exit(1)
 	}
 
-	dhcpOptions := []dhclient.Option{
-		{Type: layers.DHCPOptHostname, Data: []byte(hostname)},
-		{Type: layers.DHCPOptParamsRequest, Data: dhclient.DefaultParamsRequestList},
-	}
-
-	for k, v := range options {
-		var data []byte
-
-		if strings.HasPrefix(v, "0x") {
-			data, err = hex.DecodeString(v[2:])
-			if err != nil {
-				fmt.Printf("value \"%s\" is invalid: %s\n", v, err)
-				os.Exit(1)
-			}
-		} else {
-			data = []byte(v)
-		}
-
-		dhcpOptions = append(dhcpOptions,
-			dhclient.Option{Type: layers.DHCPOpt(k), Data: data},
-		)
-	}
-
 	client := dhclient.Client{
-		Iface:    iface,
-		Hostname: hostname,
+		Iface: iface,
 		OnBound: func(lease *dhclient.Lease) {
 			log.Printf("Bound: %+v", lease)
 		},
-		DHCPOptions: dhcpOptions,
+	}
+
+	// Add requests for default options
+	for _, param := range dhclient.DefaultParamsRequestList {
+		log.Printf("Requesting default option %d", param)
+		client.AddParamRequest(layers.DHCPOpt(param))
+	}
+
+	// Add requests for custom options
+	for _, param := range requestParams {
+		log.Printf("Requesting custom option %d", param)
+		client.AddParamRequest(layers.DHCPOpt(param))
+	}
+
+	// Add hostname option
+	hostname, _ := os.Hostname()
+	client.AddOption(layers.DHCPOptHostname, []byte(hostname))
+
+	// Add custom options
+	for _, option := range options {
+		log.Printf("Adding option %d=0x%x", option.Type, option.Data)
+		client.AddOption(option.Type, option.Data)
 	}
 
 	client.Start()
