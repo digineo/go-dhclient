@@ -11,8 +11,9 @@ jobs:
     steps:
       - checkout
 
-      # run tests
-      - run: go test -v -cover -race ./...
+      # run tests and report coverage
+      - run: go test -v -cover -race -coverprofile=coverage.txt ./...
+      - run: bash <(curl -s https://codecov.io/bash)
 
       # build binary
       - run: go install github.com/digineo/go-dhclient/cmd/dhclient
