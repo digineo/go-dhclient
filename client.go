@@ -49,6 +49,9 @@ type Lease struct {
 	DomainName   string
 	MTU          uint16
 
+	// Other options
+	OtherOptions []Option
+
 	Bound  time.Time
 	Renew  time.Time
 	Rebind time.Time

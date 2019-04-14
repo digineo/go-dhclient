@@ -71,6 +71,8 @@ func newLease(packet *layers.DHCPv4) (msgType layers.DHCPMsgType, lease Lease) {
 			if option.Length == 4 {
 				lease.Rebind = lease.Bound.Add(time.Second * time.Duration(binary.BigEndian.Uint32(option.Data)))
 			}
+		default:
+			lease.OtherOptions = append(lease.OtherOptions, Option{option.Type, option.Data})
 		}
 	}
 	return

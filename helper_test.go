@@ -42,6 +42,7 @@ func TestParseResponse(t *testing.T) {
 	assert.Equal(net.IP{192, 168, 8, 1}, lease.DNS[0])
 	assert.Equal(net.IPMask{255, 255, 252, 0}, lease.Netmask)
 	assert.EqualValues(1406, lease.MTU)
+	assert.Len(lease.OtherOptions, 0)
 
 	// check timestamps
 	assert.False(lease.Bound.IsZero())
