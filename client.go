@@ -161,7 +161,9 @@ func (client *Client) runOnce() {
 		case <-client.notify:
 		case <-time.After(time.Second):
 		}
-		return
+		if client.Lease == nil {
+			return
+		}
 	}
 
 	select {
