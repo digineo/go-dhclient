@@ -23,10 +23,11 @@ type Callback func(*Lease)
 type Client struct {
 	Hostname    string
 	Iface       *net.Interface
-	Lease       *Lease   // The current lease
-	OnBound     Callback // On renew or rebound
-	OnExpire    Callback // On expiration of a lease
-	DHCPOptions []Option // List of options to send on discovery and requests
+	Lease       *Lease           // The current lease
+	OnBound     Callback         // On renew or rebound
+	OnExpire    Callback         // On expiration of a lease
+	DHCPOptions []Option         // List of options to send on discovery and requests
+	HWAddr      net.HardwareAddr // client's hardware address
 
 	conn     *raw.Conn // Raw socket
 	xid      uint32    // Transaction ID
@@ -285,11 +286,16 @@ func (client *Client) sendPacket(msgType layers.DHCPMsgType, options []Option) e
 
 // newPacket creates a DHCP packet
 func (client *Client) newPacket(msgType layers.DHCPMsgType, options []Option) *layers.DHCPv4 {
+	hwAddr := client.HWAddr
+	if hwAddr == nil {
+		hwAddr = client.Iface.HardwareAddr
+	}
 	packet := layers.DHCPv4{
 		Operation:    layers.DHCPOpRequest,
 		HardwareType: layers.LinkTypeEthernet,
-		ClientHWAddr: client.Iface.HardwareAddr,
+		ClientHWAddr: hwAddr,
 		Xid:          client.xid, // Transaction ID
+		Flags:        0x8000,     // Broadcast
 	}
 
 	packet.Options = append(packet.Options, layers.DHCPOption{
