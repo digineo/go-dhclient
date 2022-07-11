@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/mdlayher/raw"
+	"github.com/mdlayher/packet"
 )
 
 const responseTimeout = time.Second * 5
@@ -28,8 +28,8 @@ type Client struct {
 	OnExpire    Callback // On expiration of a lease
 	DHCPOptions []Option // List of options to send on discovery and requests
 
-	conn     *raw.Conn // Raw socket
-	xid      uint32    // Transaction ID
+	conn     *packet.Conn // Raw socket
+	xid      uint32       // Transaction ID
 	rebind   bool
 	shutdown bool
 	notify   chan struct{}  // Is closed on shutdown
@@ -187,7 +187,7 @@ func (client *Client) unbound() {
 }
 
 func (client *Client) withConnection(f func() error) error {
-	conn, err := raw.ListenPacket(client.Iface, uint16(layers.EthernetTypeIPv4), nil)
+	conn, err := packet.Listen(client.Iface, packet.Raw, int(layers.EthernetTypeIPv4), nil)
 	if err != nil {
 		return err
 	}
@@ -339,7 +339,7 @@ func (client *Client) sendMulticast(dhcp *layers.DHCPv4) error {
 	}
 
 	// Send packet
-	_, err = client.conn.WriteTo(buf.Bytes(), &raw.Addr{HardwareAddr: eth.DstMAC})
+	_, err = client.conn.WriteTo(buf.Bytes(), &packet.Addr{HardwareAddr: eth.DstMAC})
 	return err
 }
 
