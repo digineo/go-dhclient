@@ -14,4 +14,4 @@ See [main.go](cmd/dhclient/main.go) for example code.
 ## Dependencies
 
 * [github.com/google/gopacket](https://github.com/google/gopacket) for serializing/unserializing of DHCP packets
-* [github.com/mdlayher/raw](https://github.com/mdlayher/raw) for raw sockets
+* [github.com/mdlayher/packet](https://github.com/mdlayher/packet) for raw sockets
