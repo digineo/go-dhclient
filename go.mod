@@ -5,7 +5,7 @@ require (
 	github.com/google/gopacket v1.1.17
 	github.com/mdlayher/packet v1.0.0
 	github.com/stretchr/testify v1.3.0
-	golang.org/x/net v0.0.0-20191003171128-d98b1b443823 // indirect
+	golang.org/x/net v0.7.0 // indirect
 )
 
 go 1.13
