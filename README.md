@@ -1,7 +1,7 @@
 go-dhclient
 ===========
 
-[![CircleCI](https://circleci.com/gh/digineo/go-dhclient/tree/master.svg?style=shield)](https://circleci.com/gh/digineo/go-dhclient/tree/master)
+[![Build](https://github.com/digineo/go-dhclient/actions/workflows/go.yml/badge.svg)](https://github.com/digineo/go-dhclient/actions/workflows/go.yml)
 [![Codecov](http://codecov.io/github/digineo/go-dhclient/coverage.svg?branch=master)](http://codecov.io/github/digineo/go-dhclient?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/digineo/go-dhclient)](https://goreportcard.com/report/github.com/digineo/go-dhclient)
 
