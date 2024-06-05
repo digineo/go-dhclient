@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -28,7 +28,6 @@ func init() {
 }
 
 func main() {
-	log.SetFlags(log.Ltime | log.Lshortfile)
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -43,22 +42,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	logHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(logHandler)
+
 	client := dhclient.Client{
-		Iface: iface,
+		Iface:  iface,
+		Logger: logger,
 		OnBound: func(lease *dhclient.Lease) {
-			log.Printf("Bound: %+v", lease)
+			logger.Info("bound", "lease", lease)
 		},
 	}
 
 	// Add requests for default options
 	for _, param := range dhclient.DefaultParamsRequestList {
-		log.Printf("Requesting default option %d", param)
+		logger.Info("Requesting default option", "param", param)
 		client.AddParamRequest(layers.DHCPOpt(param))
 	}
 
 	// Add requests for custom options
 	for _, param := range requestParams {
-		log.Printf("Requesting custom option %d", param)
+		logger.Info("Requesting custom option", "param", param)
 		client.AddParamRequest(layers.DHCPOpt(param))
 	}
 
@@ -68,26 +71,26 @@ func main() {
 
 	// Add custom options
 	for _, option := range options {
-		log.Printf("Adding option %d=0x%x", option.Type, option.Data)
+		slog.Info("Adding custom option", "type", option.Type, "value", fmt.Sprintf("0x%x", option.Data))
 		client.AddOption(option.Type, option.Data)
 	}
 
 	client.Start()
 	defer client.Stop()
 
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGUSR1)
 	for {
 		sig := <-c
-		log.Println("received", sig)
+		logger.Info("received signal", "type", sig)
 		switch sig {
 		case syscall.SIGINT, syscall.SIGTERM:
 			return
 		case syscall.SIGHUP:
-			log.Println("renew lease")
+			logger.Info("renew lease")
 			client.Renew()
 		case syscall.SIGUSR1:
-			log.Println("acquire new lease")
+			logger.Info("acquire new lease")
 			client.Rebind()
 		}
 	}

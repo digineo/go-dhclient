@@ -3,7 +3,7 @@ package dhclient
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"net"
 	"sync"
@@ -27,6 +27,7 @@ type Client struct {
 	OnBound     Callback // On renew or rebound
 	OnExpire    Callback // On expiration of a lease
 	DHCPOptions []Option // List of options to send on discovery and requests
+	Logger      *slog.Logger
 
 	conn     *packet.Conn // Raw socket
 	xid      uint32       // Transaction ID
@@ -92,6 +93,9 @@ func (client *Client) AddParamRequest(dhcpOpt layers.DHCPOpt) {
 
 // Start starts the client
 func (client *Client) Start() {
+	if client.Logger == nil {
+		client.Logger = slog.New(&discardHandler{})
+	}
 
 	// Add default DHCP options if none added yet.
 	if client.DHCPOptions == nil {
@@ -102,7 +106,7 @@ func (client *Client) Start() {
 	}
 
 	if client.notify != nil {
-		log.Panicf("client for %s already started", client.Iface.Name)
+		panic(fmt.Sprintf("client for %s already started", client.Iface.Name))
 	}
 	client.notify = make(chan struct{})
 	client.wg.Add(1)
@@ -111,7 +115,7 @@ func (client *Client) Start() {
 
 // Stop stops the client
 func (client *Client) Stop() {
-	log.Printf("[%s] shutting down dhclient", client.Iface.Name)
+	slog.Info("shutting down dhclient")
 	client.shutdown = true
 	close(client.notify)
 
@@ -155,7 +159,7 @@ func (client *Client) runOnce() {
 	}
 
 	if err != nil {
-		log.Printf("[%s] error: %s", client.Iface.Name, err)
+		client.Logger.Error("failed to acquire lease", "error", err)
 		// delay for a second
 		select {
 		case <-client.notify:
@@ -277,7 +281,7 @@ func (client *Client) request(lease *Lease) error {
 
 // sendPacket creates and sends a DHCP packet
 func (client *Client) sendPacket(msgType layers.DHCPMsgType, options []Option) error {
-	log.Printf("[%s] sending %s", client.Iface.Name, msgType)
+	client.Logger.Debug("sending packet", "type", msgType)
 	return client.sendMulticast(client.newPacket(msgType, options))
 }
 
@@ -366,7 +370,7 @@ func (client *Client) waitForResponse(msgTypes ...layers.DHCPMsgType) (layers.DH
 			// do we have the expected message type?
 			for _, t := range msgTypes {
 				if t == msgType {
-					log.Printf("[%s] received %s", client.Iface.Name, msgType)
+					client.Logger.Debug("received packet", "type", msgType)
 					return msgType, &res, nil
 				}
 			}
